@@ -1,0 +1,33 @@
+# === C / C++ build artifacts ===
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.out
+a.out
+*.exe
+
+# CMake / build dirs
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# Our lab binaries (имена исполняемых файлов в заданиях)
+lab2/src/swap/swap
+lab2/src/revert_string/revert_string
+lab2/src/revert_string/app_static
+lab2/src/revert_string/app_shared
+lab2/src/revert_string/librevert.a
+lab2/src/revert_string/librevert.so
+
+# Misc
+*.swp
+*.tmp
+*.log
+.DS_Store
