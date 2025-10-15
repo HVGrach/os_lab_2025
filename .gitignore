@@ -31,3 +31,11 @@ lab2/src/revert_string/librevert.so
 *.tmp
 *.log
 .DS_Store
+# build/binaries/backup
+*.o
+*.a
+*.so
+*.out
+*.exe
+*.bak
+lab0/hello/hello_world
