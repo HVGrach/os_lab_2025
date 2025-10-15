@@ -1,0 +1,6 @@
+# binaries and build artifacts in this folder
+sequential_min_max
+parallel_min_max
+run_sequential
+*.o
+minmax_*.txt

@@ -40,24 +40,30 @@ int main(int argc, char **argv) {
         switch (option_index) {
           case 0:
             seed = atoi(optarg);
-            // your code here
-            // error handling
+            if (seed <= 0) {
+              fprintf(stderr, "seed must be a positive integer\n");
+              return 1;
+            }
             break;
           case 1:
             array_size = atoi(optarg);
-            // your code here
-            // error handling
+            if (array_size <= 0) {
+              fprintf(stderr, "array_size must be a positive integer\n");
+              return 1;
+            }
             break;
           case 2:
             pnum = atoi(optarg);
-            // your code here
-            // error handling
+            if (pnum <= 0) {
+              fprintf(stderr, "pnum must be a positive integer\n");
+              return 1;
+            }
             break;
           case 3:
             with_files = true;
             break;
 
-          defalut:
+          default:
             printf("Index %d is out of options\n", option_index);
         }
         break;
@@ -79,45 +85,103 @@ int main(int argc, char **argv) {
   }
 
   if (seed == -1 || array_size == -1 || pnum == -1) {
-    printf("Usage: %s --seed \"num\" --array_size \"num\" --pnum \"num\" \n",
+    printf("Usage: %s --seed \"num\" --array_size \"num\" --pnum \"num\" [--by_files|-f]\n",
            argv[0]);
     return 1;
   }
 
+  if (pnum > array_size) {
+    // не запрещаем, но предупредим — часть процессов получит пустые диапазоны
+    fprintf(stderr, "Warning: pnum (%d) > array_size (%d); some chunks will be empty.\n",
+            pnum, array_size);
+  }
+
   int *array = malloc(sizeof(int) * array_size);
+  if (!array) {
+    perror("malloc array");
+    return 1;
+  }
   GenerateArray(array, array_size, seed);
+
+  // заранее создадим пайпы (если нужен pipe-режим)
+  int (*pipefd)[2] = NULL;
+  if (!with_files) {
+    pipefd = malloc(sizeof(int[2]) * (size_t)pnum);
+    if (!pipefd) { perror("malloc pipefd"); free(array); return 1; }
+    for (int i = 0; i < pnum; i++) {
+      if (pipe(pipefd[i]) == -1) {
+        perror("pipe");
+        free(pipefd);
+        free(array);
+        return 1;
+      }
+    }
+  }
+
   int active_child_processes = 0;
 
   struct timeval start_time;
   gettimeofday(&start_time, NULL);
 
+  // разобьём массив на pnum кусков: первые 'rem' кусков на 1 элемент длиннее
+  int chunk = array_size / pnum;
+  int rem = array_size % pnum;
+
   for (int i = 0; i < pnum; i++) {
     pid_t child_pid = fork();
     if (child_pid >= 0) {
       // successful fork
-      active_child_processes += 1;
       if (child_pid == 0) {
         // child process
+        int extra = (i < rem) ? 1 : 0;
+        int begin = i * chunk + (i < rem ? i : rem);
+        int end = begin + chunk + extra;
 
-        // parallel somehow
+        struct MinMax mm = GetMinMax(array, (unsigned)begin, (unsigned)end);
 
         if (with_files) {
-          // use files here
+          char fname[256];
+          snprintf(fname, sizeof(fname), "minmax_%d.txt", i);
+          FILE *f = fopen(fname, "w");
+          if (!f) { perror("fopen"); _exit(1); }
+          // пишем два числа в текстовом виде
+          fprintf(f, "%d %d\n", mm.min, mm.max);
+          fclose(f);
         } else {
-          // use pipe here
+          // pipe: ребёнок пишет, родитель читает
+          // закрыть лишний конец
+          close(pipefd[i][0]); // не читаем в ребёнке
+          if (write(pipefd[i][1], &mm.min, sizeof(mm.min)) != sizeof(mm.min)) _exit(1);
+          if (write(pipefd[i][1], &mm.max, sizeof(mm.max)) != sizeof(mm.max)) _exit(1);
+          close(pipefd[i][1]);
         }
-        return 0;
+        _exit(0);
+      } else {
+        // parent
+        active_child_processes += 1;
+        if (!with_files) {
+          // родителю не нужен write-end
+          close(pipefd[i][1]);
+        }
       }
 
     } else {
       printf("Fork failed!\n");
+      if (!with_files && pipefd) {
+        for (int k = 0; k < i; k++) close(pipefd[k][0]);
+        free(pipefd);
+      }
+      free(array);
       return 1;
     }
   }
 
   while (active_child_processes > 0) {
-    // your code here
-
+    int status = 0;
+    if (wait(&status) == -1) {
+      perror("wait");
+      break;
+    }
     active_child_processes -= 1;
   }
 
@@ -130,9 +194,30 @@ int main(int argc, char **argv) {
     int max = INT_MIN;
 
     if (with_files) {
-      // read from files
+      char fname[256];
+      snprintf(fname, sizeof(fname), "minmax_%d.txt", i);
+      FILE *f = fopen(fname, "r");
+      if (!f) { perror("fopen read"); free(array); if (pipefd) free(pipefd); return 1; }
+      if (fscanf(f, "%d %d", &min, &max) != 2) {
+        fprintf(stderr, "failed to read results from %s\n", fname);
+        fclose(f);
+        free(array);
+        if (pipefd) free(pipefd);
+        return 1;
+      }
+      fclose(f);
+      // по желанию можно удалить файл: remove(fname);
     } else {
-      // read from pipes
+      // читаем два int из пайпа i
+      ssize_t r1 = read(pipefd[i][0], &min, sizeof(min));
+      ssize_t r2 = read(pipefd[i][0], &max, sizeof(max));
+      close(pipefd[i][0]);
+      if (r1 != sizeof(min) || r2 != sizeof(max)) {
+        fprintf(stderr, "pipe read failed for chunk %d\n", i);
+        free(array);
+        free(pipefd);
+        return 1;
+      }
     }
 
     if (min < min_max.min) min_max.min = min;
@@ -146,6 +231,7 @@ int main(int argc, char **argv) {
   elapsed_time += (finish_time.tv_usec - start_time.tv_usec) / 1000.0;
 
   free(array);
+  if (pipefd) free(pipefd);
 
   printf("Min: %d\n", min_max.min);
   printf("Max: %d\n", min_max.max);
