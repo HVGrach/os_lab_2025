@@ -1,0 +1,10 @@
+# бинарники
+tcpclient
+tcpserver
+udpclient
+udpserver
+
+# временные файлы
+*.o
+*.out
+*.log

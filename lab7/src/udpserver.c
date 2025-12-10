@@ -1,3 +1,4 @@
+// udpserver.c
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -8,41 +9,64 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define SERV_PORT 20001
-#define BUFSIZE 1024
 #define SADDR struct sockaddr
 #define SLEN sizeof(struct sockaddr_in)
 
-int main() {
+int main(int argc, char *argv[]) {
   int sockfd, n;
-  char mesg[BUFSIZE], ipadr[16];
+  char *mesg = NULL;
+  char ipadr[16];
   struct sockaddr_in servaddr;
   struct sockaddr_in cliaddr;
 
+  if (argc < 3) {
+    fprintf(stderr, "Usage: %s <PORT> <BUFSIZE>\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
+
+  int port = atoi(argv[1]);
+  int bufsize = atoi(argv[2]);
+
+  if (port <= 0 || bufsize <= 0) {
+    fprintf(stderr, "Port and BUFSIZE must be positive integers\n");
+    exit(EXIT_FAILURE);
+  }
+
+  mesg = malloc(bufsize + 1);
+  if (mesg == NULL) {
+    perror("malloc");
+    exit(EXIT_FAILURE);
+  }
+
   if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
     perror("socket problem");
-    exit(1);
+    free(mesg);
+    exit(EXIT_FAILURE);
   }
 
   memset(&servaddr, 0, SLEN);
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  servaddr.sin_port = htons(SERV_PORT);
+  servaddr.sin_port = htons(port);
 
   if (bind(sockfd, (SADDR *)&servaddr, SLEN) < 0) {
     perror("bind problem");
-    exit(1);
+    free(mesg);
+    close(sockfd);
+    exit(EXIT_FAILURE);
   }
   printf("SERVER starts...\n");
 
   while (1) {
     unsigned int len = SLEN;
 
-    if ((n = recvfrom(sockfd, mesg, BUFSIZE, 0, (SADDR *)&cliaddr, &len)) < 0) {
+    if ((n = recvfrom(sockfd, mesg, bufsize, 0, (SADDR *)&cliaddr, &len)) < 0) {
       perror("recvfrom");
-      exit(1);
+      free(mesg);
+      close(sockfd);
+      exit(EXIT_FAILURE);
     }
-    mesg[n] = 0;
+    mesg[n] = '\0';
 
     printf("REQUEST %s      FROM %s : %d\n", mesg,
            inet_ntop(AF_INET, (void *)&cliaddr.sin_addr.s_addr, ipadr, 16),
@@ -50,7 +74,14 @@ int main() {
 
     if (sendto(sockfd, mesg, n, 0, (SADDR *)&cliaddr, len) < 0) {
       perror("sendto");
-      exit(1);
+      free(mesg);
+      close(sockfd);
+      exit(EXIT_FAILURE);
     }
   }
+
+  // формально недостижимо
+  free(mesg);
+  close(sockfd);
+  return 0;
 }
