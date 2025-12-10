@@ -1,0 +1,5 @@
+# lab5 binaries
+lab5/src/deadlock
+lab5/src/mutex_mutex
+lab5/src/mutex_nomutex
+lab5/src/parallel_factorial
