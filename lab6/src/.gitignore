@@ -1,0 +1,10 @@
+# бинарники лабораторных
+lab6/src/client
+lab6/src/server
+lab6/src/*.o
+
+# общие бинарники
+*.o
+*.out
+*.log
+
