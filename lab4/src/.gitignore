@@ -1,0 +1,8 @@
+# бинарники lab4
+parallel_sum
+process_memory
+zombie
+
+# объектные файлы и библиотеки
+*.o
+*.a
